@@ -8,8 +8,8 @@ f=@(x)x.^k;
 epsilon=1e-2;
 % Differential Format: central, forward, backward or FEM
 dFmtList={'central','forward','backward','FEM'};
+meshTypeList={'uniform','uniformP1','uniformP2','shishkin','2sideShishkin'};
 Err=cell(length(dFmtList),1);
-meshType='shishkin';
 
 
 %% analytical solution
@@ -19,9 +19,11 @@ getAnaSol;
 
 for kkk=1:length(dFmtList)
 dFmt=dFmtList{kkk};
+meshType=meshTypeList{4};
 
 %% n - sweep
-nList=2*floor(2.^(2:0.5:9))';
+nList=2*floor(2.^(1:0.5:11))';
+NList=zeros(size(nList));
 Err{kkk}=zeros(size(nList));
 
 for i=1:length(nList)
@@ -40,7 +42,7 @@ for i=1:length(nList)
     % toc;
     
     Err{kkk}(i)=max(abs([0;u;0]-anaSol([0;xList;1])));
-    
+    NList(i)=N;
 end
 end
 
@@ -48,11 +50,11 @@ end
 figure();
 markerList={'-ob','-sr','-*g','-^m'};
 for kkk=1:length(dFmtList)
-    plot(log(nList)/log(10),log(Err{kkk})/log(10),markerList{kkk});hold on
+    plot(log(NList)/log(10),log(Err{kkk})/log(10),markerList{kkk});hold on
 end
 legend(dFmtList);
-xlabel('$$\log_{10}n$$','interpreter','latex');ylabel('$$\log_{10}(\mathrm{Max\ Abs.\ Err.})$$','interpreter','latex');
-title(['$$\varepsilon=\mathrm{',num2str(epsilon,'%1.1E'),'}\quad b=',num2str(b),'\quad c=',num2str(c),'\quad k=',num2str(k),'$$'],'interpreter','latex');
+xlabel('$$\log_{10}N$$','interpreter','latex');ylabel('$$\log_{10}(\mathrm{Max\ Abs.\ Err.})$$','interpreter','latex');
+title(['$$\varepsilon=\mathrm{',num2str(epsilon,'%1.1E'),'}\quad b=',num2str(b),'\quad c=',num2str(c),'\quad k=',num2str(k),'$$ \quad mesh=',meshType],'interpreter','latex');
 
 %% plot
 % figure();
