@@ -8,8 +8,8 @@
 %     xList - x coordinate of mesh points, excluding boundary points.
 %     hList - the width of each mesh grid. 
 %                          hList=[xList;1]-[0;xList];
-%         N - The total number of mesh points, excluding boundary points. 
-%                          N=length(xList);
+%         N - The total number of mesh grids. 
+%                          N=length(xList)+1=length(hList);
 %-----------------------------------------------------------------------------------------------------------------------
 % Possible dFmt: 
 %        FEM - 1D Linear Finite Element Method
@@ -17,8 +17,9 @@
 %    forward - 1D Finite Difference Method, forward diference format
 %   backward - 1D Finite Difference Method, backward diference format
 % FEM+Spectrum - 1D Linear Finite Element Method plus Legendre function Spectrum method on each interval
-%                Require additional input: cutOff, a (N-1) x 1 vector setting the cut off of Spectrum method on each
+%                Require additional input: cutOff, a N x 1 vector setting the cut off of Spectrum method on each
 %                interval.
+%                Special Output: fun2id, id2fun, two mapping relation.
 %-----------------------------------------------------------------------------------------------------------------------
 % Possible meshType: 
 %         uniform - (n-1) point uniform mesh on [0,1], i.e. 0=x_0<x_1<...<x_n=1
@@ -67,7 +68,7 @@ switch meshType
         hList=[ones(n,1)*(1-meshWidth)/n;ones(n,1)*meshWidth/n];
     case '2sideShishkin'
     % two side shishkin mesh
-        if ~exist('meshWidth','var') || abs(meshWidth-1/3)>1/6
+        if ~exist('meshWidth','var') || abs(meshWidth-1/6)>1/6
             error('Invalid meshWidth. meshWidth should be smaller than 1/3.');
         end
         hList=[ones(n,1)*meshWidth/n;ones(n,1)*(1-2*meshWidth)/n;ones(n,1)*meshWidth/n];
@@ -78,23 +79,23 @@ if (abs(sum(hList)-1)>1e-10)
     error(['Mesh error: 1-sum(hList)=',num2str(1-sum(hList))]);
 end
 xList=cumsum(hList(1:end-1));
-N=length(xList);
+N=length(hList);
 % plot([xList;1],hList./hList,'o');
 
 %% generate coefficient matrices based on dFmt and hList
 if strcmp(dFmt,'FEM')
 % use linear finite element method
-    S=sparse(  diag( ( 1./hList(1:end-1)  +  1./hList(2:end) ).*ones(N  ,1) )  ...
-              +diag(  -1./hList(2:end-1)                      .*ones(N-1,1),-1) ...
-              +diag(  -1./hList(2:end-1)                      .*ones(N-1,1),+1) );
-    C=sparse(  diag(      -1/2                                .*ones(N-1,1),-1) ...
-              +diag(       1/2                                .*ones(N-1,1),+1));
-    M=sparse(  diag( ( hList(1:end-1)  +  hList(2:end) )/3    .*ones(N  ,1) )  ...
-              +diag(   hList(2:end-1)/6                       .*ones(N-1,1),-1) ...
-              +diag(   hList(2:end-1)/6                       .*ones(N-1,1),+1) );
+    S=sparse(  diag( ( 1./hList(1:end-1)  +  1./hList(2:end) ).*ones(N-1,1) )  ...
+              +diag(  -1./hList(2:end-1)                      .*ones(N-2,1),-1) ...
+              +diag(  -1./hList(2:end-1)                      .*ones(N-2,1),+1) );
+    C=sparse(  diag(      -1/2                                .*ones(N-2,1),-1) ...
+              +diag(       1/2                                .*ones(N-2,1),+1));
+    M=sparse(  diag( ( hList(1:end-1)  +  hList(2:end) )/3    .*ones(N-1,1) )  ...
+              +diag(   hList(2:end-1)/6                       .*ones(N-2,1),-1) ...
+              +diag(   hList(2:end-1)/6                       .*ones(N-2,1),+1) );
     % calc f
-    vecf=zeros(N,1);
-    for j=1:N
+    vecf=zeros(N-1,1);
+    for j=1:N-1
         h1=hList(j);   h2=hList(j+1);  x0=xList(j);
         vecf(j)=integral(@(t)(  h1*f( x0+h1*t  )  +  h2*f( x0-h2*t )  ).*(1+t),  -1,  0);
     end
@@ -107,35 +108,126 @@ if strcmp(dFmt,'FEM')
 elseif strcmp(dFmt,'central') || strcmp(dFmt,'forward') || strcmp(dFmt,'backward')
 % use finite difference method
     % add a minus sign before to fit with FEM. Precision: O(h1-h2) when h1/=h2
-    S=-sparse(  diag( -( 1./hList(1:end-1)  +  1./hList(2:end) )      .*ones(N  ,1) )  ...
-               +diag(    1./hList(2:end-1)                            .*ones(N-1,1),-1) ...
-               +diag(    1./hList(2:end-1)                            .*ones(N-1,1),+1) );
+    S=-sparse(  diag( -( 1./hList(1:end-1)  +  1./hList(2:end) )      .*ones(N-1,1) )  ...
+               +diag(    1./hList(2:end-1)                            .*ones(N-2,1),-1) ...
+               +diag(    1./hList(2:end-1)                            .*ones(N-2,1),+1) );
     switch dFmt
         case 'central'
-            C=sparse(  diag( ( hList(2:end)./hList(1:end-1)  -  hList(1:end-1)./hList(2:end)  )/2    .*ones(N  ,1) )  ...
-                      +diag(  -hList(3:end)  ./hList(2:end-1)/2                                      .*ones(N-1,1),-1) ...
-                      +diag(   hList(1:end-2)./hList(2:end-1)/2                                      .*ones(N-1,1),+1) );
+            C=sparse(  diag( ( hList(2:end)./hList(1:end-1)  -  hList(1:end-1)./hList(2:end)  )/2    .*ones(N-1,1) )  ...
+                      +diag(  -hList(3:end)  ./hList(2:end-1)/2                                      .*ones(N-2,1),-1) ...
+                      +diag(   hList(1:end-2)./hList(2:end-1)/2                                      .*ones(N-2,1),+1) );
         case 'forward'
-            C=sparse(  diag( -( hList(1:end-1)./hList(2:end) + 1 )/2     .*ones(N  ,1) )  ...
-                      +diag(  ( hList(1:end-2)./hList(2:end-1) + 1 )/2   .*ones(N-1,1),+1) );
+            C=sparse(  diag( -( hList(1:end-1)./hList(2:end) + 1 )/2     .*ones(N-1,1) )  ...
+                      +diag(  ( hList(1:end-2)./hList(2:end-1) + 1 )/2   .*ones(N-2,1),+1) );
         case 'backward'
-            C=sparse(  diag(  ( hList(2:end)./hList(1:end-1) + 1 )/2   .*ones(N  ,1) )  ...
-                      +diag( -( hList(3:end)./hList(2:end-1) + 1 )/2   .*ones(N-1,1),-1) );
+            C=sparse(  diag(  ( hList(2:end)./hList(1:end-1) + 1 )/2   .*ones(N-1,1) )  ...
+                      +diag( -( hList(3:end)./hList(2:end-1) + 1 )/2   .*ones(N-2,1),-1) );
     end
-    M=sparse(  diag(  (hList(1:end-1) + hList(2:end))/2   .*ones(N,1) )  );
+    M=sparse(  diag(  (hList(1:end-1) + hList(2:end))/2   .*ones(N-1,1) )  );
 
     %calc f
     vecf=f(xList).*(hList(1:end-1)+hList(2:end))/2;
 elseif strcmp(dFmt,'FEM+Spectrum')
-    if ~exist('cutOff','var') || length(cutOff)~=N-1
+    if ~exist('cutOff','var') || length(cutOff)<N
         error('Invalid argument: cutOff.');
     end
+    tic;
+    % mapping of base function and vector index
+    fun2id.phi=(1:N-1)';   % linear base function of FEM mesh
+    fun2id.psi=cell(N,1);  % fun2id.psi{k} is the Lobatto Function on interval [x_(k-1),x_k], fun2id.psi{k}(j)-->Lo_(j+1)
+    counter=N-1;
+    for m=1:N
+        fun2id.psi{m}=counter+(1:cutOff(m))';
+        counter=counter+cutOff(m);
+    end
     
+    id2fun=zeros(counter,2);  % id2fun(1:N-1,1) the index of linear base function, id2fun(1:N-1,2) --> 0
+                              % id2fun(N:end,1) the interval index of Lobatto Function
+                              % id2fun(N:end,2) the order of Lobatto Function
+    id2fun(1:N-1,1)=(1:N-1);
+    counter=N-1;
+    for m=1:N
+        id2fun(counter+(1:cutOff(m))',1)=m;
+        id2fun(counter+(1:cutOff(m))',2)=(1:cutOff(m))';
+        counter=counter+cutOff(m);
+    end
+    
+    clear counter;
+    
+    % diag blocks
+    % S00, C00 and M00
+    S=sparse(  diag( ( 1./hList(1:end-1)  +  1./hList(2:end) ), 0) ...  .*ones(N-1,1)
+              +diag(  -1./hList(2:end-1)                      ,-1) ...  .*ones(N-2,1)
+              +diag(  -1./hList(2:end-1)                      ,+1) ); % .*ones(N-2,1)
+    C=sparse(  diag(      -1/2                                .*ones(N-2,1),-1) ...
+              +diag(       1/2                                .*ones(N-2,1),+1));
+    M=sparse(  diag( ( hList(1:end-1)  +  hList(2:end) )/3    , 0) ...  .*ones(N-1,1)
+              +diag(   hList(2:end-1)/6                       ,-1) ...  .*ones(N-2,1)
+              +diag(   hList(2:end-1)/6                       ,+1) ); % .*ones(N-2,1)
+    % Smm, Cmm and Mmm
+    ub=max(cutOff(1:N));   % max upper bound of the order of legendre polynomial
+    id=(1:ub)';
+    Smmhm=sparse(  diag( 2*ones(ub  ,1) ));
+    Cmm  =sparse(  diag( -1./sqrt((2*id(2:end  )+1).*(2*id(2:end  )-1)) .*ones(ub-1,1),-1) ...
+                +diag(  1./sqrt((2*id(1:end-1)+1).*(2*id(1:end-1)+3)) .*ones(ub-1,1),+1));
+    Mmm_hm=0.5*sparse(  diag((  (4*id+2)./( (2*id-1).*(2*id+1).*(2*id+3) )                             ).*ones(ub  ,1) )  ...
+                       +diag((  -1./( (2*id(3:end  )-1).*sqrt((2*id(3:end  )-3).*(2*id(3:end  )+1)) )  ).*ones(ub-2,1),-2) ...
+                       +diag((  -1./( (2*id(1:end-2)+3).*sqrt((2*id(1:end-2)+1).*(2*id(1:end-2)+5)) )  ).*ones(ub-2,1),+2) );
+    for m=1:N
+        ub=cutOff(m);   % upper bound of the order of legendre polynomial
+        S=blkdiag(S,Smmhm(1:ub,1:ub)/hList(m));
+        C=blkdiag(C,Cmm(1:ub,1:ub));
+        M=blkdiag(M,Mmm_hm(1:ub,1:ub)*hList(m));
+    end
+    
+    % off diag blocks
+    tmp1=1/sqrt(6);
+    tmp2=sqrt(2/3)/4;
+    tmp3=sqrt(2/5)/12;
+    for m=1:N
+        k1=fun2id.psi{m}(1);
+        k2=fun2id.psi{m}(2);
+        if (m<N)
+            C(m,k1)=tmp1;                    C(k1,m)=-C(m,k1);
+            M(m,k1)=-hList(m)*tmp2;          M(k1,m)=M(m,k1);
+            M(m,k2)=-hList(m)*tmp3;          M(k2,m)=M(m,k2);
+        end
+        if (m>1)
+            C(m-1,k1)=-tmp1;                 C(k1,m-1)=-C(m-1,k1);
+            M(m-1,k1)=-hList(m)*tmp2;        M(k1,m-1)=M(m-1,k1);
+            M(m-1,k2)=+hList(m)*tmp3;        M(k2,m-1)=M(m-1,k2);
+        end
+    end
+    disp(['Time used to assemble coefficient matrices: ',num2str(toc),'s']);
     % check the symmetry of coeff matrices
     if max(max(abs(S-S')))>eps || max(max(abs(C+C')))>eps || max(max(abs(M-M')))>eps
         error('Symmetry test of the coeff matrices failed.');
     end
-    
+    tic;
+    % calc vecf
+    vecf=zeros(N-1+sum(cutOff(1:N)),1);
+    % for phi
+    for j=1:N-1
+        h1=hList(j);   h2=hList(j+1);  x0=xList(j);
+        vecf(j)=integral(@(t)(  h1*f( x0+h1*t  )  +  h2*f( x0-h2*t )  ).*(1+t),  -1,  0);
+    end
+    disp(['Time used to integrate f(1:N-1): ',num2str(toc),'s']);
+    tic;
+    % for psi (Lobatto Function)
+    % use the order information of f(x) ,i.e. k, to accelerate integration.
+    for m=1:N
+        for order=1:min(k+1,cutOff(m))
+            hm_2=hList(m)/2;
+            if (m>1)
+                xm_1=xList(m-1);
+            else
+                xm_1=0;
+            end
+            vecf(fun2id.psi{m}(order))=hm_2/( sqrt(4*order+2) )*integral(@(t)f(hm_2*(t+1)+xm_1).*(legendreP(order+1,t)-legendreP(order-1,t)),-1,1);  
+        end
+    end
+    disp(['Time used to integrate f(N:end): ',num2str(toc),'s']);
+    clear Smmhm Cmm Mmm_hm id ub m tmp1 tmp2 tmp3 hm_2 xm_1 order
 else
     error(['Unknow differential format:',dFmt]);
 end
