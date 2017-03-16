@@ -1,3 +1,0 @@
-comparePlottem[# &, 0.0001, 256, "FEM_S", "eq2"]
-
-eq2£ºc=0, b=1
