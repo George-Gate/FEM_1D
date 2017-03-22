@@ -1,17 +1,17 @@
 % Finite Element Method/Finite Difference Method Solver
-
+% Find Optimal sigma value for spectrum method with shishkin mesh 
 %% parameters
-b=0;
-c=1;
-k=0;
+b=1;
+c=0;
+k=3;
 f=@(x)x.^k;
 epsilon=1e-6;
 n=1;
 dFmt='FEM+Spectrum';
-meshType='2sideShishkin';
-cutOff=[20;5;20;10;5;5];
+meshType='shishkin';
+cutOff=[repmat(k+1,n,1);repmat(k+1,n-1,1);350;2000;5;5];
 %sigma=1.04;  % width factor of shishkin mesh
-sigmaList=0.8:0.02:1.4;
+sigmaList=linspace(0.5,20,20);
 
 %% analytical solution
 % depends on epsilon, b, c and k
@@ -24,10 +24,13 @@ for kkk=1:length(sigmaList)
 %% numerical solution    
 % the following depends on dFmt, f(x) and n
 % get the coefficient matrices S, C, M and vecf
-if b==0
-    meshWidth=min(0.49,sigma*sqrt(epsilon)*max(cutOff(1:2*n)));
-else
+if b>0
     meshWidth=min(0.49,sigma*epsilon*max(cutOff(1:2*n)));
+    
+elseif strcmp(meshType,'shishkin')
+    meshWidth=min(1/3.1,sigma*sqrt(epsilon)*max(cutOff(1:2*n)));
+elseif strcmp(meshType,'2sideShishkin')
+    meshWidth=min(1/3.1,sigma*sqrt(epsilon)*max(cutOff(1:3*n)));
 end
 getCoeffs;
 
@@ -37,7 +40,7 @@ H=epsilon*S+b*C+c*M;
 % solve
 tic;
 u=H\vecf;
-disp(['Time used to solve linear system: ',num2str(toc),'s']);
+% disp(['Time used to solve linear system: ',num2str(toc),'s']);
 %% get numSol
 tic;
 % set sampling points
@@ -64,32 +67,31 @@ end
 tmpN=0:max(cutOff(1:N))+1;
 if ~exist('legendreMatrix','var') || size(legendreMatrix,2)<length(tmpN) || size(legendreMatrix,1)~=sRate
     % reuse previous result if possible
-    tmpX=linspace(-1,1,sRate);
-    [tmpN,tmpX]=meshgrid(tmpN,tmpX);
-    legendreMatrix=legendreP(tmpN,tmpX);
+    tmpX=linspace(-1,1,sRate)';
+    legendreMatrix=legendreP_N(tmpN,tmpX);
 end
 % combine then into numSol
 for m=1:N
     i1=gridID(m);i2=gridID(m+1);
     tmpNlist=(1:cutOff(m))';
-    
-    numSol(i1:i2)=numSol(i1:i2)+sum( (legendreMatrix(:,tmpNlist+2) - legendreMatrix(:,tmpNlist)) * diag(  u(fun2id.psi{m})./sqrt(4*tmpNlist+2)  ),2);
+    numSol(i1:i2)=numSol(i1:i2)+sum( (legendreMatrix(:,tmpNlist+2) - legendreMatrix(:,tmpNlist)) .* repmat((  u(fun2id.psi{m})./sqrt(4*tmpNlist+2)  )',size(legendreMatrix,1),1),2);
+%     numSol(i1:i2)=numSol(i1:i2)+sum( (legendreMatrix(:,tmpNlist+2) - legendreMatrix(:,tmpNlist)) * sparse(diag(  u(fun2id.psi{m})./sqrt(4*tmpNlist+2)  )),2);
 end
 clear i1 i2 i3 sRate order tmpX tmpN tmpNlist;
 
 absErrNA=abs( numSol(2:end-1)-real(anaSol(xSample(2:end-1))) );
 maxErr(kkk)=max(absErrNA);
-disp(['Time used to combine the final result: ',num2str(toc),'s']);
-disp(['(',num2str(sigma),',',num2str(maxErr(kkk)),')']);
+% disp(['Time used to combine the final result: ',num2str(toc),'s']);
+% disp(['(',num2str(sigma),',',num2str(maxErr(kkk)),')']);
 end
 %% plot
 figure();
-plot(sigmaList,maxErr,'o-');
+plot(sigmaList,log(maxErr)/log(10),'o-');
 
 % refine plot
 title({['\centerline{$$N=',num2str(N),'\quad \varepsilon=$$',num2str(epsilon),'$$\quad b=',num2str(b),'\quad c=',num2str(c),'\quad f(x)=x^k, k=',num2str(k),'$$ \quad dFmt=',dFmt,'}'],...
-        ['\centerline{cutOff=[',num2str(cutOff(1:N)'),']}']},'interpreter','latex','HorizontalAlignment','center');
+        ['\centerline{cutOff=[',num2str(cutOff(1:N)'),'] \quad meshType=',meshType,'}']},'interpreter','latex','HorizontalAlignment','center');
 xlabel('$$\sigma$$','interpreter','latex');
-ylabel('maxError');
+ylabel('log_{10}(maxError)');
 
 

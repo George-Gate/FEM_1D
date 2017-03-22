@@ -37,10 +37,13 @@
 %
 
 %% generate hList based in meshType and n
+clear xList
 switch meshType
     case 'uniform'
     % uniform mesh
         hList=ones(n,1)/n;
+        xList=linspace(0,1,n+1)';
+        xList=xList(2:end-1);
     case 'uniformP1'
     % uniform mesh plus one point on the last mesh grid
         if ~exist('extraPointPos','var') || abs(extraPointPos(1)-0.5)>0.5
@@ -49,6 +52,7 @@ switch meshType
             eP=extraPointPos(1);
         end
         hList=[ones(n-1,1)/n;(1-eP)/n;eP/n];
+        xList=cumsum(hList(1:end-1));
         clear eP;
     case 'uniformP2'
     % uniform mesh plus two points on both side
@@ -59,6 +63,7 @@ switch meshType
             eP2=extraPointPos(2);
         end
         hList=[eP1/n;(1-eP1)/n;ones(n-2,1)/n;(1-eP2)/n;eP2/n];
+        xList=cumsum(hList(1:end-1));
         clear eP1 eP2;
     case 'shishkin'
     % shishkin mesh
@@ -66,40 +71,63 @@ switch meshType
             error('Invalid meshWidth. meshWidth should be smaller than 1/2.');
         end
         hList=[ones(n,1)*(1-meshWidth)/n;ones(n,1)*meshWidth/n];
+        xList=linspace(0,1-meshWidth,n+1)';
+        xList=[xList(1:end-1);linspace(1-meshWidth,1,n+1)'];
+        xList=xList(2:end-1);
     case '2sideShishkin'
     % two side shishkin mesh
         if ~exist('meshWidth','var') || abs(meshWidth-1/6)>1/6
             error('Invalid meshWidth. meshWidth should be smaller than 1/3.');
         end
         hList=[ones(n,1)*meshWidth/n;ones(n,1)*(1-2*meshWidth)/n;ones(n,1)*meshWidth/n];
+        xList=linspace(0,meshWidth,n+1)';
+        xList=[xList(1:end-1);linspace(meshWidth,1-meshWidth,n+1)'];
+        xList=[xList(1:end-1);linspace(1-meshWidth,1,n+1)'];
+        xList=xList(2:end-1);
     otherwise
         error(['Unknow mesh type:',meshType]);
 end
 if (abs(sum(hList)-1)>1e-10)
     error(['Mesh error: 1-sum(hList)=',num2str(1-sum(hList))]);
 end
-xList=cumsum(hList(1:end-1));
 N=length(hList);
+if (N~=length(xList)+1)
+    error('Length of xList and hList do not match.');
+end
+if (xList(end)>1)
+    error(['Mesh error: 1-xList(end)=',num2str(1-xList(end))]);
+end
 % plot([xList;1],hList./hList,'o');
 
 %% generate coefficient matrices based on dFmt and hList
 if strcmp(dFmt,'FEM')
 % use linear finite element method
-    S=sparse(  diag( ( 1./hList(1:end-1)  +  1./hList(2:end) ).*ones(N-1,1) )  ...
-              +diag(  -1./hList(2:end-1)                      .*ones(N-2,1),-1) ...
-              +diag(  -1./hList(2:end-1)                      .*ones(N-2,1),+1) );
-    C=sparse(  diag(      -1/2                                .*ones(N-2,1),-1) ...
-              +diag(       1/2                                .*ones(N-2,1),+1));
-    M=sparse(  diag( ( hList(1:end-1)  +  hList(2:end) )/3    .*ones(N-1,1) )  ...
-              +diag(   hList(2:end-1)/6                       .*ones(N-2,1),-1) ...
-              +diag(   hList(2:end-1)/6                       .*ones(N-2,1),+1) );
-    % calc f
+%     S=sparse(  diag( ( 1./hList(1:end-1)  +  1./hList(2:end) ).*ones(N-1,1) )  ...
+%               +diag(  -1./hList(2:end-1)                      .*ones(N-2,1),-1) ...
+%               +diag(  -1./hList(2:end-1)                      .*ones(N-2,1),+1) );
+%     C=sparse(  diag(      -1/2                                .*ones(N-2,1),-1) ...
+%               +diag(        1/2                                .*ones(N-2,1),+1));
+%     M=sparse(  diag( ( hList(1:end-1)  +  hList(2:end) )/3    .*ones(N-1,1) )  ...
+%               +diag(   hList(2:end-1)/6                       .*ones(N-2,1),-1) ...
+%               +diag(   hList(2:end-1)/6                       .*ones(N-2,1),+1) );
+    S= sparse( (1:N-1)',(1:N-1)',( 1./hList(1:end-1)  +  1./hList(2:end) ),N-1,N-1  )  ...
+      +sparse( (2:N-1)',(1:N-2)', -1./hList(2:end-1)                      ,N-1,N-1  ) ...
+      +sparse( (1:N-2)',(2:N-1)', -1./hList(2:end-1)                      ,N-1,N-1  );
+    C= sparse( (2:N-1)',(1:N-2)', -1/2                       ,N-1,N-1  ) ...
+      +sparse( (1:N-2)',(2:N-1)',  1/2                      ,N-1,N-1  );
+    M= sparse( (1:N-1)',(1:N-1)',( hList(1:end-1)  +  hList(2:end) )/3 ,N-1,N-1  )  ...
+      +sparse( (2:N-1)',(1:N-2)',  hList(2:end-1)/6                    ,N-1,N-1  ) ...
+      +sparse( (1:N-2)',(2:N-1)',  hList(2:end-1)/6                    ,N-1,N-1  );
+
+%     tic;
+    % calc load vector vecf
     vecf=zeros(N-1,1);
-    for j=1:N-1
-        h1=hList(j);   h2=hList(j+1);  x0=xList(j);
+    hList2=hList(2:end);
+    parfor j=1:N-1
+        h1=hList(j);   h2=hList2(j);  x0=xList(j);
         vecf(j)=integral(@(t)(  h1*f( x0+h1*t  )  +  h2*f( x0-h2*t )  ).*(1+t),  -1,  0);
     end
-    
+%     disp(['Time used to integrate vecf: ',num2str(toc),'s']);
     % check the symmetry of coeff matrices
     if max(max(abs(S-S')))>eps || max(max(abs(C+C')))>eps || max(max(abs(M-M')))>eps
         error('Symmetry test of the coeff matrices failed.');
@@ -108,22 +136,34 @@ if strcmp(dFmt,'FEM')
 elseif strcmp(dFmt,'central') || strcmp(dFmt,'forward') || strcmp(dFmt,'backward')
 % use finite difference method
     % add a minus sign before to fit with FEM. Precision: O(h1-h2) when h1/=h2
-    S=-sparse(  diag( -( 1./hList(1:end-1)  +  1./hList(2:end) )      .*ones(N-1,1) )  ...
-               +diag(    1./hList(2:end-1)                            .*ones(N-2,1),-1) ...
-               +diag(    1./hList(2:end-1)                            .*ones(N-2,1),+1) );
+%     S=-sparse(  diag( -( 1./hList(1:end-1)  +  1./hList(2:end) )      .*ones(N-1,1) )  ...
+%                +diag(    1./hList(2:end-1)                            .*ones(N-2,1),-1) ...
+%                +diag(    1./hList(2:end-1)                            .*ones(N-2,1),+1) );
+    S=-sparse( (1:N-1)',(1:N-1)',-( 1./hList(1:end-1)  +  1./hList(2:end) ),N-1,N-1  )  ...
+      -sparse( (2:N-1)',(1:N-2)', 1./hList(2:end-1)                        ,N-1,N-1  ) ...
+      -sparse( (1:N-2)',(2:N-1)', 1./hList(2:end-1)                        ,N-1,N-1  );
     switch dFmt
         case 'central'
-            C=sparse(  diag( ( hList(2:end)./hList(1:end-1)  -  hList(1:end-1)./hList(2:end)  )/2    .*ones(N-1,1) )  ...
-                      +diag(  -hList(3:end)  ./hList(2:end-1)/2                                      .*ones(N-2,1),-1) ...
-                      +diag(   hList(1:end-2)./hList(2:end-1)/2                                      .*ones(N-2,1),+1) );
+%             C=sparse(  diag( ( hList(2:end)./hList(1:end-1)  -  hList(1:end-1)./hList(2:end)  )/2    .*ones(N-1,1) )  ...
+%                       +diag(  -hList(3:end)  ./hList(2:end-1)/2                                      .*ones(N-2,1),-1) ...
+%                       +diag(   hList(1:end-2)./hList(2:end-1)/2                                      .*ones(N-2,1),+1) );
+            C= sparse( (1:N-1)',(1:N-1)',( hList(2:end)./hList(1:end-1)  -  hList(1:end-1)./hList(2:end)  )/2   ,N-1,N-1  )  ...
+              +sparse( (2:N-1)',(1:N-2)',   -hList(3:end)  ./hList(2:end-1)/2                                   ,N-1,N-1  ) ...
+              +sparse( (1:N-2)',(2:N-1)',   hList(1:end-2)./hList(2:end-1)/2                                    ,N-1,N-1  );
         case 'forward'
-            C=sparse(  diag( -( hList(1:end-1)./hList(2:end) + 1 )/2     .*ones(N-1,1) )  ...
-                      +diag(  ( hList(1:end-2)./hList(2:end-1) + 1 )/2   .*ones(N-2,1),+1) );
+%             C=sparse(  diag( -( hList(1:end-1)./hList(2:end) + 1 )/2     .*ones(N-1,1) )  ...
+%                       +diag(  ( hList(1:end-2)./hList(2:end-1) + 1 )/2   .*ones(N-2,1),+1) );
+            C= sparse( (1:N-1)',(1:N-1)',  -( hList(1:end-1)./hList(2:end) + 1 )/2    ,N-1,N-1  )  ...
+              +sparse( (1:N-2)',(2:N-1)',  ( hList(1:end-2)./hList(2:end-1) + 1 )/2   ,N-1,N-1  );
         case 'backward'
-            C=sparse(  diag(  ( hList(2:end)./hList(1:end-1) + 1 )/2   .*ones(N-1,1) )  ...
-                      +diag( -( hList(3:end)./hList(2:end-1) + 1 )/2   .*ones(N-2,1),-1) );
+%             C=sparse(  diag(  ( hList(2:end)./hList(1:end-1) + 1 )/2   .*ones(N-1,1) )  ...
+%                       +diag( -( hList(3:end)./hList(2:end-1) + 1 )/2   .*ones(N-2,1),-1) );
+            C= sparse( (1:N-1)',(1:N-1)',    ( hList(2:end)./hList(1:end-1) + 1 )/2     ,N-1,N-1  )  ...
+              +sparse( (2:N-1)',(1:N-2)',   -( hList(3:end)./hList(2:end-1) + 1 )/2     ,N-1,N-1  );
     end
-    M=sparse(  diag(  (hList(1:end-1) + hList(2:end))/2   .*ones(N-1,1) )  );
+%     M=sparse(  diag(  (hList(1:end-1) + hList(2:end))/2   .*ones(N-1,1) )  );
+    M=sparse( (1:N-1)',(1:N-1)', (hList(1:end-1) + hList(2:end))/2, N-1, N-1);
+    
 
     %calc f
     vecf=f(xList).*(hList(1:end-1)+hList(2:end))/2;
@@ -164,15 +204,28 @@ elseif strcmp(dFmt,'FEM+Spectrum')
     M=sparse(  diag( ( hList(1:end-1)  +  hList(2:end) )/3    , 0) ...  .*ones(N-1,1)
               +diag(   hList(2:end-1)/6                       ,-1) ...  .*ones(N-2,1)
               +diag(   hList(2:end-1)/6                       ,+1) ); % .*ones(N-2,1)
+          
+    max(abs(S(:)-S1(:)))
+    max(abs(C(:)-C1(:)))
+    max(abs(M(:)-M1(:)))
+    
+          
     % Smm, Cmm and Mmm
     ub=max(cutOff(1:N));   % max upper bound of the order of legendre polynomial
     id=(1:ub)';
-    Smmhm=sparse(  diag( 2*ones(ub  ,1) ));
-    Cmm  =sparse(  diag( -1./sqrt((2*id(2:end  )+1).*(2*id(2:end  )-1)) .*ones(ub-1,1),-1) ...
-                +diag(  1./sqrt((2*id(1:end-1)+1).*(2*id(1:end-1)+3)) .*ones(ub-1,1),+1));
-    Mmm_hm=0.5*sparse(  diag((  (4*id+2)./( (2*id-1).*(2*id+1).*(2*id+3) )                             ).*ones(ub  ,1) )  ...
-                       +diag((  -1./( (2*id(3:end  )-1).*sqrt((2*id(3:end  )-3).*(2*id(3:end  )+1)) )  ).*ones(ub-2,1),-2) ...
-                       +diag((  -1./( (2*id(1:end-2)+3).*sqrt((2*id(1:end-2)+1).*(2*id(1:end-2)+5)) )  ).*ones(ub-2,1),+2) );
+%     Smmhm=sparse(  diag( 2*ones(ub  ,1) ));
+    Smmhm=sparse((1:ub)',(1:ub)',2,ub,ub);
+%     Cmm2  =sparse(  diag( -1./sqrt((2*id(2:end  )+1).*(2*id(2:end  )-1)) ,-1) ... .*ones(ub-1,1)
+%                 +diag(  1./sqrt((2*id(1:end-1)+1).*(2*id(1:end-1)+3)) ,+1));    %.*ones(ub-1,1)
+    Cmm  =sparse((2:ub)',(1:ub-1)',-1./sqrt((2*id(2:end  )+1).*(2*id(2:end  )-1)),ub,ub) ... 
+         +sparse((1:ub-1)',(2:ub)',  1./sqrt((2*id(1:end-1)+1).*(2*id(1:end-1)+3)),ub,ub); 
+%     Mmm_hm=0.5*sparse(  diag((  (4*id+2)./( (2*id-1).*(2*id+1).*(2*id+3) )                             ) )  ...  .*ones(ub  ,1)
+%                        +diag((  -1./( (2*id(3:end  )-1).*sqrt((2*id(3:end  )-3).*(2*id(3:end  )+1)) )  ),-2) ... .*ones(ub-2,1)
+%                        +diag((  -1./( (2*id(1:end-2)+3).*sqrt((2*id(1:end-2)+1).*(2*id(1:end-2)+5)) )  ),+2) ); %.*ones(ub-2,1)
+    Mmm_hm=0.5*(sparse((1:ub)',(1:ub)',   (4*id+2)./( (2*id-1).*(2*id+1).*(2*id+3) )                           ,ub,ub  )  ... 
+               +sparse((3:ub)',(1:ub-2)', -1./( (2*id(3:end  )-1).*sqrt((2*id(3:end  )-3).*(2*id(3:end  )+1)) ),ub,ub  ) ... 
+               +sparse((1:ub-2)',(3:ub)', -1./( (2*id(1:end-2)+3).*sqrt((2*id(1:end-2)+1).*(2*id(1:end-2)+5)) ),ub,ub  ) ); 
+
     for m=1:N
         ub=cutOff(m);   % upper bound of the order of legendre polynomial
         S=blkdiag(S,Smmhm(1:ub,1:ub)/hList(m));
@@ -198,20 +251,21 @@ elseif strcmp(dFmt,'FEM+Spectrum')
             M(m-1,k2)=+hList(m)*tmp3;        M(k2,m-1)=M(m-1,k2);
         end
     end
-    disp(['Time used to assemble coefficient matrices: ',num2str(toc),'s']);
+    
+%     disp(['Time used to assemble coefficient matrices: ',num2str(toc),'s']);
     % check the symmetry of coeff matrices
     if max(max(abs(S-S')))>eps || max(max(abs(C+C')))>eps || max(max(abs(M-M')))>eps
         error('Symmetry test of the coeff matrices failed.');
     end
     tic;
-    % calc vecf
+    % calc load vector
     vecf=zeros(N-1+sum(cutOff(1:N)),1);
     % for phi
     for j=1:N-1
         h1=hList(j);   h2=hList(j+1);  x0=xList(j);
         vecf(j)=integral(@(t)(  h1*f( x0+h1*t  )  +  h2*f( x0-h2*t )  ).*(1+t),  -1,  0);
     end
-    disp(['Time used to integrate f(1:N-1): ',num2str(toc),'s']);
+%     disp(['Time used to integrate f(1:N-1): ',num2str(toc),'s']);
     tic;
     % for psi (Lobatto Function)
     % use the order information of f(x) ,i.e. k, to accelerate integration.
@@ -223,10 +277,10 @@ elseif strcmp(dFmt,'FEM+Spectrum')
             else
                 xm_1=0;
             end
-            vecf(fun2id.psi{m}(order))=hm_2/( sqrt(4*order+2) )*integral(@(t)f(hm_2*(t+1)+xm_1).*(legendreP(order+1,t)-legendreP(order-1,t)),-1,1);  
+            vecf(fun2id.psi{m}(order))=hm_2/( sqrt(4*order+2) )*integral(@(t)f(hm_2*(t+1)+xm_1).*(legendreP_N(order+1,t)-legendreP_N(order-1,t)),-1,1);  
         end
     end
-    disp(['Time used to integrate f(N:end): ',num2str(toc),'s']);
+%     disp(['Time used to integrate f(N:end): ',num2str(toc),'s']);
     clear Smmhm Cmm Mmm_hm id ub m tmp1 tmp2 tmp3 hm_2 xm_1 order
 else
     error(['Unknow differential format:',dFmt]);
