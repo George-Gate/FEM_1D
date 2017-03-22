@@ -1,16 +1,16 @@
 % Finite Element Method/Finite Difference Method Solver
 
 %% parameters
-b=1;
-c=0;
-k=1;
+b=0;
+c=1;
+k=0;
 f=@(x)x.^k;
-epsilon=1e-3;
-n=2^4;
+epsilon=1e-5;
+n=2^8;
 % Differential Format: central, forward, backward or FEM
 dFmtList={'central','forward','backward','FEM'};
 dFmt=dFmtList{4};
-meshType='shishkin';
+meshType='uniform';
 
 
 %% analytical solution
@@ -21,7 +21,11 @@ getAnaSol;
 %% numerical solution    
 % the following depends on dFmt, f(x) and n
 % get the coefficient matrices S, C, M and vecf
-meshWidth=min(0.49,epsilon/b*2.5*log(n));
+if (b)
+    meshWidth=min(0.49,epsilon/b*2.5*log(n));
+else
+    meshWidth=min(1/3.1,sqrt(epsilon/c)*2.5*log(n));
+end
 getCoeffs;
 
 % the following depends on n, epsilon, b and c
@@ -35,7 +39,17 @@ u=H\vecf;
 figure();
 plot([0;xList;1],[0;u;0],'-o');hold on;
 
-[ax,~,~]=plotyy(0:0.0001:1,real(anaSol(0:0.0001:1)),...
+switch meshType
+    case 'shishkin'
+        w=-epsilon*log(epsilon);
+        xSample=[linspace(0,1-w,5*nList(end))';linspace(1-w,1,5*nList(end))'];
+    case '2sideShishkin'
+        w=-sqrt(epsilon)*log(epsilon)/2;
+        xSample=[linspace(0,w,5*nList(end))';linspace(w,1-w,5*nList(end))';linspace(1-w,1,5*nList(end))'];
+    otherwise
+        xSample=linspace(0,1,5*nList(end))';
+end
+[ax,~,~]=plotyy(xSample,real(anaSol(xSample)),...
                 xList,abs( u-real(anaSol(xList)) ),...
                 @(x,y)plot(x,y,'linewidth',2,'color','red'),...
                 @(x,y)semilogy(x,y,'g*'));hold off;box on;

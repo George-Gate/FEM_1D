@@ -1,13 +1,14 @@
 % Finite Element Method/Finite Difference Method Solver
 
 %% parameters
-b=1;
-c=0;
-k=1;
+b=0;
+c=1;
+k=0;
 f=@(x)x.^k;
-epsilon=1e-2;
+epsilon=1e-12;
 % Differential Format: central, forward, backward or FEM
-dFmtList={'central','forward','backward','FEM'};
+dFmtList={'central','FEM'};
+% dFmtList={'central','forward','backward','FEM'};
 meshTypeList={'uniform','uniformP1','uniformP2','shishkin','2sideShishkin'};
 Err=cell(length(dFmtList),1);
 
@@ -19,16 +20,20 @@ getAnaSol;
 
 for kkk=1:length(dFmtList)
 dFmt=dFmtList{kkk};
-meshType=meshTypeList{4};
+meshType=meshTypeList{5};
 
 %% n - sweep
-nList=2*floor(2.^(1:0.5:11))';
+nList=2*floor(2.^(3)/3)';
 NList=zeros(size(nList));
 Err{kkk}=zeros(size(nList));
 
 for i=1:length(nList)
     n=nList(i);
-    meshWidth=min(0.49,epsilon/b*2.5*log(n));
+    if (b)
+        meshWidth=min(0.49,epsilon/b*2.5*log(n));
+    else
+        meshWidth=min(1/3.1,sqrt(epsilon/c)*2.5*log(n));
+    end
     % the following depends on dFmt, f(x) and n
     % get the coefficient matrices S, C, M and vecf
     getCoeffs;
@@ -52,6 +57,9 @@ markerList={'-ob','-sr','-*g','-^m'};
 for kkk=1:length(dFmtList)
     plot(log(NList)/log(10),log(Err{kkk})/log(10),markerList{kkk});hold on
 end
+x0=log(NList(end))/log(10);
+y0=log(Err{kkk}(end))/log(10);
+line([x0,x0-3.2],[y0,y0+6.4],'lineStyle','-.','color','k');
 legend(dFmtList);
 xlabel('$$\log_{10}N$$','interpreter','latex');ylabel('$$\log_{10}(\mathrm{Max\ Abs.\ Err.})$$','interpreter','latex');
 title(['$$\varepsilon=\mathrm{',num2str(epsilon,'%1.1E'),'}\quad b=',num2str(b),'\quad c=',num2str(c),'\quad k=',num2str(k),'$$ \quad mesh=',meshType],'interpreter','latex');

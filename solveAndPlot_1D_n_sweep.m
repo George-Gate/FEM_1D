@@ -7,9 +7,9 @@ extraPointPos=0.9;
 %% parameters
 b=1;
 c=0;
-k=2;
+k=1;
 f=@(x)x.^k;
-epsilon=1e-6;
+epsilon=1e-12;
 
 %% analytical solution
 % depends on epsilon, b, c and k
@@ -17,14 +17,18 @@ epsilon=1e-6;
 getAnaSol;
 
 %% n - sweep
-nList=2.^(5)';
+nList=floor(2.^([3:7])');
 Err=zeros(size(nList));
 numSol=cell(size(nList));
 legendList=cell(length(nList)+1,1);
 
 for i=1:length(nList)
     n=nList(i);
-    meshWidth=min(0.49,epsilon/b*2.5*log(n));
+    if (b)
+        meshWidth=min(0.49,epsilon/b*2.5*log(n));
+    else
+        meshWidth=min(1/3.1,sqrt(epsilon/c)*2.5*log(n));
+    end
     % the following depends on dFmt and n
     % get the coefficient matrices S, C, M and vecf
     getCoeffs;
@@ -47,18 +51,30 @@ for i=1:length(nList)
 end
 
 %% plot
-figure('position',[100 100 940 360]);
+figure('position',[100 100 877 546]);
+subplot(2,1,2);
 for i=1:length(nList)
-    plot(numSol{i}.xList,anaSol(numSol{i}.xList)-numSol{i}.u,'-o');
+    plot(numSol{i}.xList,anaSol(numSol{i}.xList)-numSol{i}.u,'-o');hold on;
 end
 xlabel('$$x$$','interpreter','latex');ylabel('anaSol - numSol');
 title('Error between numerical and analytical solution.');
 
-figure('position',[0 0 940 360]);
+%figure('position',[0 0 940 360]);
+subplot(2,1,1);
 for i=1:length(nList)
     plot([0;numSol{i}.xList;1],[0;numSol{i}.u;0],'-o');hold on;
 end
-plot(0:1e-6:1,anaSol(0:1e-6:1),'linewidth',2);
+switch meshType
+    case 'shishkin'
+        w=-epsilon*log(epsilon);
+        xSample=[linspace(0,1-w,5*nList(end))';linspace(1-w,1,5*nList(end))'];
+    case '2sideShishkin'
+        w=-sqrt(epsilon)*log(epsilon)/2;
+        xSample=[linspace(0,w,5*nList(end))';linspace(w,1-w,5*nList(end))';linspace(1-w,1,5*nList(end))'];
+    otherwise
+        xSample=linspace(0,1,5*nList(end))';
+end
+plot(xSample,anaSol(xSample),'linewidth',2);
 legendList{end}='Analytical Solution';
 if strcmp(dFmt,'FEM')
     xlabel('$$x$$','interpreter','latex');ylabel('$$u^{(\mathrm{FEM})}$$','interpreter','latex');

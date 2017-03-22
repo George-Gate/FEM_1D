@@ -3,14 +3,14 @@
 dFmtList={'central','forward','backward','FEM'};
 meshTypeList={'uniform','uniformP1','uniformP2','shishkin','2sideShishkin'};
 dFmt=dFmtList{4};
-
+factor=1e14;  % amplify error of Intersection Line when plotting
 extraPointPos=0.9;
 %% parameters
 b=0;
 c=1;
-k=2;
+k=1;
 f=@(x)x.^k;
-epsilon=1e-12;
+epsilon=1e-6;
 n=2^5;
 
 %% analytical solution
@@ -61,7 +61,6 @@ xList=numSol{1}.xList(2):0.01/n:numSol{1}.xList(end-1);
 for i=1:topSol-1
     plot(xList,anaSol(xList)-numSol{i}.pp(xList));hold on;
 end
-factor=1e2;  % amplify error of Intersection Line
 plot(xList,factor*(anaSol(xList)-lineInt(xList)),'--');
 plot(intX(3:end-3),factor*(anaSol(intX(3:end-3))-intY(3:end-3)),'*');
 legendList{topSol}=['Intersection x ',num2str(factor,'%.1E')];
